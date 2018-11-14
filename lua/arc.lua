@@ -92,8 +92,8 @@ function Arc:all(enc, val)
 end
 
 --- update any dirty quads on this arc device
-function Arc:refresh()
-  arc_refresh(self.dev)
+function Arc:refresh(enc)
+  arc_refresh(self.dev, enc)
 end
 
 --- print a description of this arc device
@@ -122,7 +122,7 @@ function Arc.connect(n)
     attached = function() return Arc.vport[n].attached end,
     led = function(x,y,z) Arc.vport[n].led(x,y,z) end,
     all = function(x,val) Arc.vport[n].all(x,val) end,
-    refresh = function() Arc.vport[n].refresh() end,
+    refresh = function(x) Arc.vport[n].refresh(x) end,
     disconnect = function(self)
         self.led = function() end
         self.all = function() end
@@ -139,7 +139,7 @@ function Arc.connect(n)
         self.attached = function() return Arc.vport[p].attached end
         self.led = function(x,y,z) Arc.vport[p].led(x,y,z) end
         self.all = function(x,val) Arc.vport[p].all(x,val) end
-        self.refresh = function() Arc.vport[p].refresh() end
+        self.refresh = function(x) Arc.vport[p].refresh(x) end
         Arc.vport[p].index = Arc.vport[p].index + 1
         self.index = Arc.vport[p].index
         self.port = p
@@ -174,12 +174,12 @@ function Arc.update_devices()
     Arc.vport[i].attached = false
     Arc.vport[i].led = function(x,y,val) end
     Arc.vport[i].all = function(x,val) end
-    Arc.vport[i].refresh = function() end
+    Arc.vport[i].refresh = function(x) end
     for _,device in pairs(Arc.devices) do
       if device.name == Arc.vport[i].name then
         Arc.vport[i].led = function(x,y,val) device:led(x,y,val) end
         Arc.vport[i].all = function(x,val) device:all(x,val) end
-        Arc.vport[i].refresh = function() device:refresh() end
+        Arc.vport[i].refresh = function(x) device:refresh(x) end
         Arc.vport[i].attached = true
         table.insert(device.ports, i)
       end
@@ -229,5 +229,25 @@ norns.arc.enc = function(id, x, delta)
     print('>> error: no entry for arc ' .. id)
   end
 end
+
+--- redefine global grid key input handler
+norns.arc.key = function(id, enc, state)
+  local a = Arc.devices[id]
+  if a ~= nil then
+    if a.key ~= nil then
+      a.key(enc, state)
+    end
+
+    for _,n in pairs(a.ports) do
+      for _,event in pairs(Arc.vport[n].callbacks) do
+        --print("vport " .. n)
+        event(enc,state)
+      end
+    end
+  else
+    print('>> error: no entry for grid ' .. id)
+  end
+end
+
 
 return Arc

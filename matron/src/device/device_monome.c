@@ -19,9 +19,8 @@
 static void dev_monome_handle_press(const monome_event_t *e, void *p);
 static void dev_monome_handle_lift(const monome_event_t *e, void *p);
 static void dev_arc_handle_enc(const monome_event_t *e, void *p);
-
-static void dev_monome_handle_press(const monome_event_t *e, void *p);
-static void dev_monome_handle_lift(const monome_event_t *e, void *p);
+static void dev_arc_handle_press(const monome_event_t *e, void *p);
+static void dev_arc_handle_lift(const monome_event_t *e, void *p);
 
 //-------------------------
 //--- monome device class
@@ -46,6 +45,8 @@ int dev_monome_init(void *self) {
     monome_register_handler(m, MONOME_BUTTON_DOWN, dev_monome_handle_press, md);
     monome_register_handler(m, MONOME_BUTTON_UP, dev_monome_handle_lift, md);
     monome_register_handler(m, MONOME_ENCODER_DELTA, dev_arc_handle_enc, md);
+    monome_register_handler(m, MONOME_ENCODER_KEY_DOWN, dev_arc_handle_press, md);
+    monome_register_handler(m, MONOME_ENCODER_KEY_UP, dev_arc_handle_lift, md);
 
     // drop the name set by udev and use libmonome-provided name
     free(base->name);
@@ -92,8 +93,8 @@ void dev_monome_all_led(struct dev_monome *md, uint8_t val) {
 // set a given arc LED value
  void dev_arc_set_led(struct dev_monome *md,
                          uint8_t enc, uint8_t led, uint8_t val) {
-     /* fprintf(stderr, "dev_arc_set_led: %d %s %d %d %d\n", */
-     /*             md->dev.id, md->dev.serial, enc, led, val); */
+      /* fprintf(stderr, "dev_arc_set_led: %d %s %d %d %d\n", */
+      /*            md->dev.id, md->dev.serial, enc, led, val); */
      md->data[enc][led] = val;
      md->dirty[enc] = true;
      md->arc = true;
@@ -101,6 +102,8 @@ void dev_monome_all_led(struct dev_monome *md, uint8_t val) {
 
  // set all arc LEDs for a given enc to value
  void dev_arc_all_led(struct dev_monome *md, uint8_t enc, uint8_t val) {
+      	 /*fprintf(stderr, "dev_arc_all_led: %d %s %d %d\n", */
+ 		 /*                md->dev.id, md->dev.serial, enc, val);*/ 
         for(uint8_t i = 0; i < 64; i++) {
             md->data[enc][i] = val;
         }
@@ -108,7 +111,17 @@ void dev_monome_all_led(struct dev_monome *md, uint8_t val) {
      	md->arc = true;
 }
 
-// transmit all dirty quads
+// arc transmit dirty quads
+void dev_arc_refresh(struct dev_monome *md, uint8_t enc) {
+    if (md->m == NULL) { return; }
+        if(md->dirty[enc]) {
+			monome_led_ring_map(md->m,enc,
+								md->data[enc]);
+            md->dirty[enc] = false;
+        }
+}
+
+// grid - transmit all dirty quads
 void dev_monome_refresh(struct dev_monome *md) {
     static const int quad_xoff[4] = {0, 8, 0, 8};
     static const int quad_yoff[4] = {0, 0, 8, 8};
@@ -147,14 +160,25 @@ grid_key_event(const monome_event_t *e, void *p, int state) {
 }
 
 static inline void
- arc_enc_event(const monome_event_t *e, void *p) {
-     struct dev_monome *md = (struct dev_monome *)p;
-     union event_data *ev = event_data_new(EVENT_ARC_ENC);
-     ev->arc_enc.id = md->dev.id;
-     ev->arc_enc.n = e->encoder.number;
-     ev->arc_enc.delta = e->encoder.delta;
-     // fprintf(stderr, "%d\t%d\t%d\n", md->dev.id, e->encoder.number, e->encoder.delta);
-     event_post(ev);
+arc_key_event(const monome_event_t *e, void *p, int state) {
+    struct dev_monome *md = (struct dev_monome *)p;
+    union event_data *ev = event_data_new(EVENT_ARC_KEY);
+    ev->arc_key.id = md->dev.id;
+    ev->arc_key.n = e->encoder.number;
+    ev->arc_key.state = state;
+    // fprintf(stderr, "%d\t%d\t%d\t%d\n", md->dev.id, e->arc.enc, state);
+    event_post(ev);
+}
+
+static inline void
+arc_enc_event(const monome_event_t *e, void *p) {
+	struct dev_monome *md = (struct dev_monome *)p;
+	union event_data *ev = event_data_new(EVENT_ARC_ENC);
+	ev->arc_enc.id = md->dev.id;
+	ev->arc_enc.n = e->encoder.number;
+	ev->arc_enc.delta = e->encoder.delta;
+	// fprintf(stderr, "%d\t%d\t%d\n", md->dev.id, e->encoder.number, e->encoder.delta);
+	event_post(ev);
 }
  
 void dev_monome_handle_press(const monome_event_t *e, void *p) {
@@ -165,6 +189,16 @@ void dev_monome_handle_press(const monome_event_t *e, void *p) {
 void dev_monome_handle_lift(const monome_event_t *e, void *p) {
     // fprintf(stderr, "dev_monome_handle_lift()\n");
     grid_key_event(e, p, 0);
+}
+
+void dev_arc_handle_press(const monome_event_t *e, void *p) {
+    // fprintf(stderr, "dev_monome_handle_press()\n");
+    arc_key_event(e, p, 1);
+}
+
+void dev_arc_handle_lift(const monome_event_t *e, void *p) {
+    // fprintf(stderr, "dev_monome_handle_lift()\n");
+    arc_key_event(e, p, 0);
 }
 
 void dev_arc_handle_enc(const monome_event_t *e, void *p) {
