@@ -84,12 +84,12 @@ end
 -- arc device callbacks
 norns.arc = {}
 --- arc enc event
-norns.arc.enc = function(id, n, delta)
-    -- print("norns.arc.enc ", id,n,delta)
+norns.arc.enc = function(id, n, delta, types)
+     print("norns.arc.enc ", id,n,delta)
 end
 --- arc key event
-norns.arc.key = function(id, n, val)
-   -- print("norns.arc.key ", id,x,val)
+norns.arc.key = function(id, n, val, types)
+    print("norns.arc.key ", id,x,val)
 end
 
 -- hid callbacks

@@ -212,17 +212,17 @@ end
 
 
 --- redefine global arc enc input handler
-norns.arc.enc = function(id, x, delta)
+norns.arc.enc = function(id, x, delta, types)
   local a = Arc.devices[id]
   if a ~= nil then
     if a.enc ~= nil then
-      a.enc(x, delta)
+      a.enc(x, delta, "enc")
     end
 
     for _,n in pairs(a.ports) do
       for _,event in pairs(Arc.vport[n].callbacks) do
         --print("vport " .. n)
-        event(x,delta)
+        event(x,delta,"enc")
       end
     end
   else
@@ -230,22 +230,22 @@ norns.arc.enc = function(id, x, delta)
   end
 end
 
---- redefine global grid key input handler
-norns.arc.key = function(id, enc, state)
+--- redefine global enc key input handler
+norns.arc.key = function(id, enc, state, types)
   local a = Arc.devices[id]
   if a ~= nil then
     if a.key ~= nil then
-      a.key(enc, state)
+      a.key(enc, state, "key")
     end
 
     for _,n in pairs(a.ports) do
       for _,event in pairs(Arc.vport[n].callbacks) do
         --print("vport " .. n)
-        event(enc,state)
+        event(enc,state,"key")
       end
     end
   else
-    print('>> error: no entry for grid ' .. id)
+    print('>> error: no entry for arc ' .. id)
   end
 end
 
