@@ -82,7 +82,7 @@ function Metro:start(time, count, stage)
     local vargs = {}
     if time then self.props.time = time end
     if count then self.props.count = count end
-    if stage then self.init_stage = stage end
+    if stage then self.props.init_stage = stage end
     self.is_running = true
     metro_start(self.props.id, self.props.time, self.props.count, self.props.init_stage) -- C function
 end
