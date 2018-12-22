@@ -185,6 +185,7 @@ local to_data = {
   channel_pressure = function(msg)
       return {0xd0 + (msg.ch or 1) - 1, msg.val}
     end
+  -- start/stop/continue/clock have no data, just use send helper function
 }
 
 --- convert msg to data (midi bytes)
@@ -196,16 +197,15 @@ end
 
 --- convert data (midi bytes) to msg
 function Midi.to_msg(data)
-  local msg = {}
+  local msg
   -- note on
   if data[1] & 0xf0 == 0x90 then
-    --print("note")
     msg = {
       note = data[2],
       vel = data[3],
       ch = data[1] - 0x90 + 1
     }
-    if data[3] > 0 then 
+    if data[3] > 0 then
       msg.type = "note_on"
     elseif data[3] == 0 then -- if velocity is zero then send note off
       msg.type = "note_off"
@@ -262,7 +262,7 @@ function Midi.to_msg(data)
     msg.type = "clock"
   -- active sensing (should probably ignore)
   elseif data[1] == 0xfe then
-      -- do nothing 
+      -- do nothing
   -- everything else
   else
     msg = {
