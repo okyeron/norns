@@ -59,7 +59,7 @@ function Hid.new(id, name, types, codes, dev)
     end
   end
 
-  return d
+  return device
 end
 
 
