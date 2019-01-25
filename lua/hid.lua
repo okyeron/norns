@@ -240,14 +240,13 @@ norns.hid.event = function(id, ev_type, ev_code, value)
       device.event(data)
     end
 
-    for _,n in pairs(device.ports) do
-      for _,event in pairs(Hid.vports[n].callbacks) do
-        --print("vport " .. n)
-        event(ev_type_name, ev_code_name, value)
+    if device.port then
+      if Hid.vports[device.port].event then
+        Hid.vports[device.port].event(ev_type_name, ev_code_name, value)
       end
     end
   end
-
+  
 end
 
 -- --------------------------------
