@@ -3,19 +3,20 @@
 -- @alias Hid
 require 'norns'
 
+-- HID device class
+
 local Hid = {}
+Hid.__index = Hid
+
 Hid.devices = {}
-Hid.list = {}
-Hid.vport = {}
+Hid.vports = {}
+
 for i=1,4 do
-  Hid.vport[i] = {
+  Hid.vports[i] = {
     name = "none",
-    callbacks = {},
-    index = 0,
-    attached = false
+    device = nil,
   }
 end
-Hid.__index = Hid
 
 
 -- `codes` is indexed by event type, values are subtables
@@ -24,22 +25,22 @@ Hid.__index = Hid
 -- @param types: array of supported event types. keys are type codes, values are strings
 -- @param codes: array of supported codes. each entry is a table of codes of a given type. subtables are indexed by supported code numbers; values are code names
 function Hid.new(id, name, types, codes, dev)
-  local d = setmetatable({}, Hid)
-  d.id = id
-  d.name = name  
-  d.dev = dev -- opaque pointer
-  d.event = nil -- event callback
-  d.remove = nil -- device unplug callback
-  d.types = types
-  d.codes = {}
-  d.callbacks = {}
-  d.ports = {} -- list of virtual ports this device is attached to
+  local device = setmetatable({}, Hid)
+  device.id = id
+  device.name = name  
+  device.dev = dev -- opaque pointer
+  device.event = nil -- event callback
+  device.remove = nil -- device unplug callback
+  device.types = types
+  device.codes = {}
+  device.callbacks = {}
+  device.port = nil
 
   for i,t in pairs(types) do
     if Hid.event_types[t] ~= nil then
-      d.codes[t] = {}
+      device.codes[t] = {}
       for j,c in pairs(codes[i]) do
-        d.codes[t][c] = Hid.event_codes[t][c]
+        device.codes[t][c] = Hid.event_codes[t][c]
       end
     end
   end
@@ -47,12 +48,12 @@ function Hid.new(id, name, types, codes, dev)
   -- autofill next vport postiion
   local connected = {}
   for i=1,4 do
-    table.insert(connected, Hid.vport[i].name)
+    table.insert(connected, Hid.vports[i].name)
   end
-  if not tab.contains(connected, name) then
+  if not tab.contains(connected, device.name) then
     for i=1,4 do
-      if Hid.vport[i].name == "none" then
-        Hid.vport[i].name = name
+      if Hid.vports[i].name == "none" then
+        Hid.vports[i].name = device.name
         break
       end
     end
@@ -106,75 +107,41 @@ end
 --- create device, returns object with handler and send
 function Hid.connect(n)
   local n = n or 1
-  if n>4 then n=4 end
-    
-  Hid.vport[n].index = Hid.vport[n].index + 1
-
-  local d = {
-    index = Hid.vport[n].index,
-    port = n,
-    codes = function() return Hid[n].codes end,
-    types = function() return Hid[n].types end,
-    event = function(id, ev_type, ev_code, value)
-      print("hid input")
-    end,
-    attached = function() return Hid.vport[n].attached end,
-    disconnect = function(self)
-        Hid.vport[self.port].callbacks[self.index] = nil
-        self.index = nil
-        self.port = nil
-      end,
-    reconnect = function(self, p)
-        p = p or 1
-        if self.index then
-          Hid.vport[self.port].callbacks[self.index] = nil
-        end
-        self.attached = function() return Hid.vport[p].attached end
-        Hid.vport[p].index = Hid.vport[p].index + 1
-        self.index = Hid.vport[p].index
-        self.port = p
-        self.codes = function() return Hid[n].codes end
-        self.types = function() return Hid[n].types end
-        Hid.vport[p].callbacks[self.index] = function(id, ev_type, ev_code, value) self.event(id, ev_type, ev_code, value) end
-      end
-  }
-  Hid.vport[n].callbacks[d.index] = function(id, ev_type, ev_code, value) d.event(id, ev_type, ev_code, value) end
-
-  return d
+  return Hid.vports[n]
 end
 
 --- clear handlers
 function Hid.cleanup()
   for i=1,4 do
-    Hid.vport[i].callbacks = {}
-	Hid.vport[i].index = 0
+    Hid.vports[i].callbacks = {}
   end
 end
 
 function Hid.update_devices()
-  -- build list of available devices
-  --print ("update devices")
-  Hid.list = {}
+  -- reset vports for existing devices
+  print ("update devices")
   for _,device in pairs(Hid.devices) do
-    table.insert(Hid.list, device.name)
-    device.ports = {}
+    device.port = nil
   end
+  
   -- connect available devices to vports
   for i=1,4 do
-    Hid.vport[i].attached = false
-    Hid.vport[i].codes = {}
-    Hid.vport[i].types = {}
+    Hid.vports[i].device = nil
+
+    --Hid.vports[i].codes = {}
+    --Hid.vports[i].types = {}
     for _,device in pairs(Hid.devices) do
-      if device.name == Hid.vport[i].name then
-        Hid.vport[i].codes = device.codes
-        Hid.vport[i].types = device.types
-        Hid.vport[i].attached = true
-        table.insert(device.ports, i)
+      if device.name == Hid.vports[i].name then
+        Hid.vports[i].device = device
+        --Hid.vports[i].codes = device.codes
+        --Hid.vports[i].types = device.types
+        device.port = i
       end
     end
   end
 end
 
+norns.hid = {}
 
 -- ----------------------------------
 -- instance methods
@@ -216,6 +183,7 @@ function Hid:print()
     end
   end
 end
+
 
 -- -------------------------------------------------
 -- global norns functions (C glue)
@@ -259,21 +227,21 @@ norns.hid.event = function(id, ev_type, ev_code, value)
   assert(ev_type_name)
   local ev_code_name = Hid.event_codes[ev_type][ev_code]
   --print("norns.hid.event ", id, ev_type_name, ev_code_name, value)
-  local dev = Hid.devices[id]
-  --if  dev then
-  --  local cb = dev.callbacks[ev_code_name]
+  local device = Hid.devices[id]
+  --if  device then
+  --  local cb = device.callbacks[ev_code_name]
   --  if cb then
   --   cb(value)
   --  end
   --end
 
-    if dev ~= nil then
-    if dev.event ~= nil then
-      dev.event(data)
+  if device ~= nil then
+    if device.event ~= nil then
+      device.event(data)
     end
 
-    for _,n in pairs(dev.ports) do
-      for _,event in pairs(Hid.vport[n].callbacks) do
+    for _,n in pairs(device.ports) do
+      for _,event in pairs(Hid.vports[n].callbacks) do
         --print("vport " .. n)
         event(ev_type_name, ev_code_name, value)
       end
