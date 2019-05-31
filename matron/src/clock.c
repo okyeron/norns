@@ -159,6 +159,10 @@ void clock_set_source(clock_source_t source) {
     clock_source = source;
 }
 
+int clock_get_source() {
+    return clock_source;
+}
+
 void clock_cancel_coro(int coro_id) {
     for (int i = 0; i < NUM_THREADS; i++) {
         if (clock_thread_pool[i].coro_id == coro_id) {

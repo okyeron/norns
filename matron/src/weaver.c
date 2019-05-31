@@ -205,6 +205,7 @@ static int _clock_schedule_sync(lua_State *l);
 static int _clock_cancel(lua_State *l);
 static int _clock_internal_set_tempo(lua_State *l);
 static int _clock_set_source(lua_State *l);
+static int _clock_get_source(lua_State *l);
 static int _clock_get_time_beats(lua_State *l);
 
 // boilerplate: push a function to the stack, from field in global 'norns'
@@ -400,6 +401,7 @@ void w_init(void) {
   lua_register(lvm, "_clock_cancel", &_clock_cancel);
   lua_register(lvm, "_clock_internal_set_tempo", &_clock_internal_set_tempo);
   lua_register(lvm, "_clock_set_source", &_clock_set_source);
+  lua_register(lvm, "_clock_get_source", &_clock_get_source);
   lua_register(lvm, "_clock_get_time_beats", &_clock_get_time_beats);
 
   // run system init code
@@ -1496,10 +1498,17 @@ int _clock_set_source(lua_State *l) {
     return luaL_error(l, "wrong number of arguments");
   }
 
-  int source = (int) luaL_checkinteger(l, 1);
+  int source = (int) luaL_checkinteger(l, 1) - 1; // convert from 1-based
+  
   clock_set_source(source);
 
   return 0;
+}
+
+int _clock_get_source(lua_State *l) {
+  lua_pushinteger(l, clock_get_source() + 1); // convert to 1-base
+
+  return 1;
 }
 
 int _clock_get_time_beats(lua_State *l) {

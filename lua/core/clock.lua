@@ -61,8 +61,16 @@ clock.set_source = function(source)
   _clock_set_source(source)
 end
 
+clock.get_source = function()
+  return _clock_get_source()
+end
+
 clock.get_time_beats = function()
   return _clock_get_time_beats()
+end
+
+clock.internal_set_tempo = function(tempo)
+  _clock_internal_set_tempo(tempo)
 end
 
 return clock
