@@ -45,14 +45,14 @@ void crone::SoftCutClient::clearBusses(size_t numFrames) {
 }
 
 void crone::SoftCutClient::mixInput(size_t numFrames) {
-    for (int ch = 0; ch < 2; ++ch) {
-        for (int v = 0; v < NumVoices; ++v) {
-            if (cut.getRecFlag(v)) {
-                input[v].mixFrom(&source[SourceAdc][ch], numFrames, inLevel[ch][v]);
-                for (int w = 0; w < NumVoices; ++w) {
-                    if (cut.getPlayFlag(w)) {
-                        input[v].mixFrom(output[w], numFrames, fbLevel[v][w]);
-                    }
+    for (int dst = 0; dst < NumVoices; ++dst) {
+        if (cut.getRecFlag(dst)) {
+            for (int ch = 0; ch < 2; ++ch) {
+                input[dst].mixFrom(&source[SourceAdc][ch], numFrames, inLevel[ch][dst]);
+            }
+            for (int src = 0; src < NumVoices; ++src) {
+                if (cut.getPlayFlag(src)) {
+                    input[dst].mixFrom(output[src], numFrames, fbLevel[src][dst]);
                 }
             }
         }
@@ -62,7 +62,7 @@ void crone::SoftCutClient::mixInput(size_t numFrames) {
 void crone::SoftCutClient::mixOutput(size_t numFrames) {
     for (int v = 0; v < NumVoices; ++v) {
         if (cut.getPlayFlag(v)) {
-            mix.panMixFrom(output[v], numFrames, outLevel[v], outPan[v]);
+            mix.panMixEpFrom(output[v], numFrames, outLevel[v], outPan[v]);
         }
     }
 }
@@ -71,21 +71,15 @@ void crone::SoftCutClient::handleCommand(Commands::CommandPacket *p) {
     switch (p->id) {
         //-- softcut routing
         case Commands::Id::SET_ENABLED_CUT:
-            std::cout << "softcut: setting enabled: voice "
-                      << p->idx_0 << ": " << (p->value > 0) << std::endl;
             enabled[p->idx_0] = p->value > 0.f;
             break;
         case Commands::Id::SET_LEVEL_CUT:
-            std::cout << "softcut: setting voice output level "
-                      << p->idx_0 << ": " << p->value << std::endl;
             outLevel[p->idx_0].setTarget(p->value);
             break;;
         case Commands::Id::SET_PAN_CUT:
-            outPan[p->idx_0].setTarget(p->value);
+            outPan[p->idx_0].setTarget((p->value/2)+0.5); // map -1,1 to 0,1
             break;
         case Commands::Id::SET_LEVEL_IN_CUT:
-            std::cout << "softcut: setting voice input level "
-                      << p->idx_0 << ": " << p->idx_1 << ": " << p->value << std::endl;
             inLevel[p->idx_0][p->idx_1].setTarget(p->value);
             break;
         case Commands::Id::SET_LEVEL_CUT_CUT:
@@ -174,7 +168,13 @@ void crone::SoftCutClient::handleCommand(Commands::CommandPacket *p) {
             break;
 
         case Commands::Id::SET_CUT_LEVEL_SLEW_TIME:
-            cut.setLevelSlewTime(p->idx_0, p->value);
+            outLevel[p->idx_0].setTime(p->value);
+            break;
+        case Commands::Id::SET_CUT_PAN_SLEW_TIME:
+            outPan[p->idx_0].setTime(p->value);
+            break;
+        case Commands::Id::SET_CUT_RECPRE_SLEW_TIME:
+            cut.setRecPreSlewTime(p->idx_0, p->value);
             break;
         case Commands::Id::SET_CUT_RATE_SLEW_TIME:
             cut.setRateSlewTime(p->idx_0, p->value);

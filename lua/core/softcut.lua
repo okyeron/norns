@@ -75,7 +75,7 @@ SC.position = function(voice,value) _norns.cut_param("position",voice,value) end
 -- @tparam integer b : buffer number (1,2)
 SC.buffer = function(i,b) _norns.cut_param_ii("buffer",i,b) end
 --- sync two voices
-SC.voice_sync = function(src, dest, v) _norns.cut_param_iif("voice_sync",src,dst,v) end
+SC.voice_sync = function(src, dest, v) _norns.cut_param_iif("voice_sync",src,dest,v) end
 
 --- set pre_filter cutoff
 SC.pre_filter_fc = function(voice,value) _norns.cut_param("pre_filter_fc",voice,value) end
@@ -126,6 +126,10 @@ SC.post_filter_dry = function(voice,value) _norns.cut_param("post_filter_dry",vo
 
 --- set level slew time
 SC.level_slew_time = function(voice,value) _norns.cut_param("level_slew_time",voice,value) end
+--- set pan slew time
+SC.pan_slew_time = function(voice,value) _norns.cut_param("pan_slew_time",voice,value) end
+--- set recpre slew time
+SC.recpre_slew_time = function(voice,value) _norns.cut_param("recpre_slew_time",voice,value) end
 --- set rate slew time
 SC.rate_slew_time = function(voice,value) _norns.cut_param("rate_slew_time",voice,value) end
 

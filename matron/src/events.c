@@ -121,6 +121,9 @@ void event_data_free(union event_data *ev) {
     case EVENT_POLL_WAVE:
         free(ev->poll_wave.data);
         break;
+    case EVENT_SYSTEM_CMD:
+        free(ev->system_cmd.capture);
+        break;
     }
     free(ev);
 }
@@ -273,11 +276,23 @@ static void handle_event(union event_data *ev) {
     case EVENT_STARTUP_READY_TIMEOUT:
         w_handle_startup_ready_timeout();
         break;
+    case EVENT_SYSTEM_CMD:
+        w_handle_system_cmd(ev->system_cmd.capture);
+        break;
     case EVENT_RESET_LVM:
         w_reset_lvm();
         break;
     case EVENT_QUIT:
         quit = true;
+        break;
+    case EVENT_CROW_ADD:
+        w_handle_crow_add(ev->crow_add.dev);
+        break;
+    case EVENT_CROW_REMOVE:
+        w_handle_crow_remove(ev->crow_remove.id);
+        break;
+    case EVENT_CROW_EVENT:
+        w_handle_crow_event(ev->crow_event.dev, ev->crow_event.id);
         break;
     } /* switch */
 

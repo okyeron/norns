@@ -25,6 +25,7 @@
 #include "device_hid.h"
 #include "device_monome.h"
 #include "device_midi.h"
+#include "device_crow.h"
 #include "events.h"
 #include "hello.h"
 #include "lua_eval.h"
@@ -35,8 +36,17 @@
 #include "osc.h"
 #include "oracle.h"
 #include "weaver.h"
+#include "system_cmd.h"
 #include "clock.h"
 #include "clocks/clock_internal.h"
+
+
+// registered lua functions require the LVM state as a parameter.
+// but often we don't need it.
+// use pragma instead of casting to void as a workaround.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 
 //------
 //---- global lua state!
@@ -104,8 +114,10 @@ static int _gain_hp(lua_State *l);
 static int _osc_send(lua_State *l);
 static int _osc_send_crone(lua_State *l);
 // midi
-// midi
 static int _midi_send(lua_State *l);
+
+// crow
+static int _crow_send(lua_State *l);
 
 // crone
 /// engines
@@ -198,6 +210,9 @@ static int _restart_audio(lua_State *l);
 
 // soundfile inspection
 static int _sound_file_inspect(lua_State *l);
+
+// util
+static int _system_cmd(lua_State *l);
 
 // reset LVM
 static int _reset_lvm(lua_State *l);
@@ -299,6 +314,11 @@ void w_init(void) {
   lua_register_norns("cut_param_iif", &_set_cut_param_iif);
   lua_register_norns("level_input_cut", &_set_level_input_cut);
 
+  // crow
+  lua_register_norns("crow_send", &_crow_send);
+
+  // util
+  lua_register_norns("system_cmd", &_system_cmd);
 
   // name global extern table
   lua_setglobal(lvm, "_norns");
@@ -355,7 +375,7 @@ void w_init(void) {
   // midi
   lua_register(lvm, "midi_send", &_midi_send);
 
-  // get list of available crone engines
+    // get list of available crone engines
   lua_register(lvm, "report_engines", &_request_engine_report);
   // load a named engine
   lua_register(lvm, "load_engine", &_load_engine);
@@ -442,15 +462,17 @@ void w_reset_lvm() {
 //----------------------------------
 //---- static definitions
 //
-int _reset_lvm(lua_State *l) {
-  if (lua_gettop(l) != 0) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-  lua_settop(l, 0); 
 
+#define STRING_NUM(n) #n
+#define LUA_ARG_ERROR(n) "error: requires " STRING_NUM(n) " arguments" 
+#define lua_check_num_args(n) \
+  if (lua_gettop(l) != n) { return luaL_error(l, LUA_ARG_ERROR(n)); }
+
+int _reset_lvm(lua_State *l) {
+  lua_check_num_args(0);
+  lua_settop(l, 0); 
   // do this through the event loop, not from inside a lua pcall
   event_post( event_data_new(EVENT_RESET_LVM) );
-
   return 0;
 }
 
@@ -460,10 +482,7 @@ int _reset_lvm(lua_State *l) {
  * @function s_update
  */
 int _screen_update(lua_State *l) {
-  if (lua_gettop(l) != 0) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(0);
   screen_update();
   lua_settop(l, 0);
   return 0;
@@ -474,10 +493,7 @@ int _screen_update(lua_State *l) {
  * @function s_save
  */
 int _screen_save(lua_State *l) {
-  if (lua_gettop(l) != 0) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(0);
   screen_save();
   lua_settop(l, 0);
   return 0;
@@ -488,10 +504,7 @@ int _screen_save(lua_State *l) {
  * @function s_restore
  */
 int _screen_restore(lua_State *l) {
-  if (lua_gettop(l) != 0) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(0);
   screen_restore();
   lua_settop(l, 0);
   return 0;
@@ -502,10 +515,7 @@ int _screen_restore(lua_State *l) {
  * @function s_font_face
  */
 int _screen_font_face(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int x = (int) luaL_checkinteger(l, 1) - 1;
   if(x<0) x = 0;
   screen_font_face(x);
@@ -518,10 +528,7 @@ int _screen_font_face(lua_State *l) {
  * @function s_font_size
  */
 int _screen_font_size(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int x = (int) luaL_checknumber(l, 1);
   screen_font_size(x);
   lua_settop(l, 0);
@@ -534,10 +541,7 @@ int _screen_font_size(lua_State *l) {
  * @tparam integer state, 0=off, 1=on
  */
 int _screen_aa(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int x = (int) luaL_checkinteger(l, 1);
   screen_aa(x);
   lua_settop(l, 0);
@@ -550,10 +554,7 @@ int _screen_aa(lua_State *l) {
  * @tparam integer level, 0 (black) to 15 (white)
  */
 int _screen_level(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int x = (int) luaL_checkinteger(l, 1);
   screen_level(x);
   lua_settop(l, 0);
@@ -566,14 +567,11 @@ int _screen_level(lua_State *l) {
  * @tparam integer width line width
  */
 int _screen_line_width(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
-    double x = luaL_checknumber(l, 1);
-    screen_line_width(x);
-    lua_settop(l, 0);
-    return 0;
+  lua_check_num_args(1);
+  double x = luaL_checknumber(l, 1);
+  screen_line_width(x);
+  lua_settop(l, 0);
+  return 0;
 }
 
 /***
@@ -582,14 +580,11 @@ int _screen_line_width(lua_State *l) {
  * @tparam string line cap style ("butt", "round" or "square"). default is "butt".
  */
 int _screen_line_cap(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
-    const char *s = luaL_checkstring(l, 1);
-    screen_line_cap(s);
-    lua_settop(l, 0);
-    return 0;
+  lua_check_num_args(1);
+  const char *s = luaL_checkstring(l, 1);
+  screen_line_cap(s);
+  lua_settop(l, 0);
+  return 0;
 }
 
 /***
@@ -598,14 +593,11 @@ int _screen_line_cap(lua_State *l) {
  * @tparam string line join style ("miter", "round" or "bevel"). default is "miter".
  */
 int _screen_line_join(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
-    const char *s = luaL_checkstring(l, 1);
-    screen_line_join(s);
-    lua_settop(l, 0);
-    return 0;
+  lua_check_num_args(1);
+  const char *s = luaL_checkstring(l, 1);
+  screen_line_join(s);
+  lua_settop(l, 0);
+  return 0;
 }
 
 /***
@@ -614,14 +606,11 @@ int _screen_line_join(lua_State *l) {
  * @tparam double miter limit
  */
 int _screen_miter_limit(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
-    double limit = luaL_checknumber(l, 1);
-    screen_miter_limit(limit);
-    lua_settop(l, 0);
-    return 0;
+  lua_check_num_args(1);
+  double limit = luaL_checknumber(l, 1);
+  screen_miter_limit(limit);
+  lua_settop(l, 0);
+  return 0;
 }
 
 /***
@@ -631,15 +620,12 @@ int _screen_miter_limit(lua_State *l) {
  * @param y
  */
 int _screen_move(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
-    double x = luaL_checknumber(l, 1);
-    double y = luaL_checknumber(l, 2);
-    screen_move(x,y);
-    lua_settop(l, 0);
-    return 0;
+  lua_check_num_args(2);
+  double x = luaL_checknumber(l, 1);
+  double y = luaL_checknumber(l, 2);
+  screen_move(x,y);
+  lua_settop(l, 0);
+  return 0;
 }
 
 /***
@@ -649,15 +635,12 @@ int _screen_move(lua_State *l) {
  * @param y
  */
 int _screen_line(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
-    double x = luaL_checknumber(l, 1);
-    double y = luaL_checknumber(l, 2);
-    screen_line(x,y);
-    lua_settop(l, 0);
-    return 0;
+  lua_check_num_args(2);
+  double x = luaL_checknumber(l, 1);
+  double y = luaL_checknumber(l, 2);
+  screen_line(x,y);
+  lua_settop(l, 0);
+  return 0;
 }
 
 /***
@@ -667,15 +650,12 @@ int _screen_line(lua_State *l) {
  * @param y
  */
 int _screen_move_rel(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
-    double x = luaL_checknumber(l, 1);
-    double y = luaL_checknumber(l, 2);
-    screen_move_rel(x,y);
-    lua_settop(l, 0);
-    return 0;
+  lua_check_num_args(2);
+  double x = luaL_checknumber(l, 1);
+  double y = luaL_checknumber(l, 2);
+  screen_move_rel(x,y);
+  lua_settop(l, 0);
+  return 0;
 }
 
 /***
@@ -685,15 +665,12 @@ int _screen_move_rel(lua_State *l) {
  * @param y
  */
 int _screen_line_rel(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
-    double x = (int) luaL_checknumber(l, 1);
-    double y = (int) luaL_checknumber(l, 2);
-    screen_line_rel(x,y);
-    lua_settop(l, 0);
-    return 0;
+  lua_check_num_args(2);
+  double x = (int) luaL_checknumber(l, 1);
+  double y = (int) luaL_checknumber(l, 2);
+  screen_line_rel(x,y);
+  lua_settop(l, 0);
+  return 0;
 }
 
 /***
@@ -703,10 +680,7 @@ int _screen_line_rel(lua_State *l) {
  * @param y
  */
 int _screen_curve(lua_State *l) {
-  if (lua_gettop(l) != 6) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(6);
   double x1 = luaL_checknumber(l, 1);
   double y1 = luaL_checknumber(l, 2);
   double x2 = luaL_checknumber(l, 3);
@@ -725,10 +699,7 @@ int _screen_curve(lua_State *l) {
  * @param y
  */
 int _screen_curve_rel(lua_State *l) {
-  if (lua_gettop(l) != 6) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(6);
   double x1 = luaL_checknumber(l, 1);
   double y1 = luaL_checknumber(l, 2);
   double x2 = luaL_checknumber(l, 3);
@@ -747,10 +718,7 @@ int _screen_curve_rel(lua_State *l) {
  * @param y
  */
 int _screen_arc(lua_State *l) {
-  if (lua_gettop(l) != 5) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(5);
   double x = luaL_checknumber(l, 1);
   double y = luaL_checknumber(l, 2);
   double r = luaL_checknumber(l, 3);
@@ -768,10 +736,7 @@ int _screen_arc(lua_State *l) {
  * @param y
  */
 int _screen_rect(lua_State *l) {
-  if (lua_gettop(l) != 4) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(4);
   double x = luaL_checknumber(l, 1);
   double y = luaL_checknumber(l, 2);
   double w = luaL_checknumber(l, 3);
@@ -786,10 +751,7 @@ int _screen_rect(lua_State *l) {
  * @function s_stroke
  */
 int _screen_stroke(lua_State *l) {
-  if (lua_gettop(l) != 0) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(0);
   screen_stroke();
   lua_settop(l, 0);
   return 0;
@@ -800,10 +762,7 @@ int _screen_stroke(lua_State *l) {
  * @function s_fill
  */
 int _screen_fill(lua_State *l) {
-  if (lua_gettop(l) != 0) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(0);
   screen_fill();
   lua_settop(l, 0);
   return 0;
@@ -815,10 +774,7 @@ int _screen_fill(lua_State *l) {
  * @tparam string text test to print
  */
 int _screen_text(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   const char *s = luaL_checkstring(l, 1);
   screen_text(s);
   lua_settop(l, 0);
@@ -830,10 +786,7 @@ int _screen_text(lua_State *l) {
  * @function s_clear
  */
 int _screen_clear(lua_State *l) {
-  if (lua_gettop(l) != 0) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(0);
   screen_clear();
   lua_settop(l, 0);
   return 0;
@@ -844,10 +797,7 @@ int _screen_clear(lua_State *l) {
  * @function s_close
  */
 int _screen_close(lua_State *l) {
-  if (lua_gettop(l) != 0) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(0);
   screen_close_path();
   lua_settop(l, 0);
   return 0;
@@ -859,10 +809,7 @@ int _screen_close(lua_State *l) {
  * @tparam gets x/y displacement of a string
  */
 int _screen_extents(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   const char *s = luaL_checkstring(l, 1);
   double *xy = screen_extents(s);
   lua_pushinteger(l, xy[0]);
@@ -876,10 +823,7 @@ int _screen_extents(lua_State *l) {
  * @tparam string filename
  */
 int _screen_export_png(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   const char *s = luaL_checkstring(l, 1);
   screen_export_png(s);
   lua_settop(l, 0);
@@ -892,10 +836,7 @@ int _screen_export_png(lua_State *l) {
  * @tparam string filename
  */
 int _screen_display_png(lua_State *l) {
-  if (lua_gettop(l) != 3) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(3);
   const char *s = luaL_checkstring(l, 1);
   double x = luaL_checknumber(l, 2);
   double y = luaL_checknumber(l, 3);
@@ -911,10 +852,7 @@ int _screen_display_png(lua_State *l) {
  * @tparam integer level level (0-63)
  */
 int _gain_hp(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int level = (int) luaL_checkinteger(l, 1);
   i2c_hp(level);
   lua_settop(l, 0);
@@ -1019,7 +957,6 @@ int _osc_send_crone(lua_State *l) {
 
   int nargs = lua_gettop(l);
 
-
   // path
   luaL_checktype(l, 1, LUA_TSTRING);
   path = lua_tostring(l, 1);
@@ -1072,6 +1009,28 @@ int _osc_send_crone(lua_State *l) {
 
 
 /***
+ * crow: send
+ * @function _crow_send
+ */
+int _crow_send(lua_State *l) {
+  struct dev_crow *d;
+  const char *s;
+
+  if (lua_gettop(l) != 2) {
+    return luaL_error(l, "wrong number of arguments");
+  }
+
+  luaL_checktype(l, 1, LUA_TLIGHTUSERDATA);
+  d = lua_touserdata(l, 1);
+  s = luaL_checkstring(l, 2);
+  lua_settop(l, 0);
+
+  dev_crow_send(d, s);
+
+  return 0;
+}
+
+/***
  * midi: send
  * @function midi_send
  */
@@ -1080,9 +1039,7 @@ int _midi_send(lua_State *l) {
   size_t nbytes;
   uint8_t *data;
 
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(2);
 
   luaL_checktype(l, 1, LUA_TLIGHTUSERDATA);
   md = lua_touserdata(l, 1);
@@ -1115,10 +1072,7 @@ int _midi_send(lua_State *l) {
  * @param z level (0-15)
  */
 int _grid_set_led(lua_State *l) {
-  if (lua_gettop(l) != 4) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(4);
   luaL_checktype(l, 1, LUA_TLIGHTUSERDATA);
   struct dev_monome *md = lua_touserdata(l, 1);
   int x = (int) luaL_checkinteger(l, 2) - 1; // convert from 1-base
@@ -1130,10 +1084,7 @@ int _grid_set_led(lua_State *l) {
 }
 
 int _arc_set_led(lua_State *l) {
-  if (lua_gettop(l) != 4) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(4);
   luaL_checktype(l, 1, LUA_TLIGHTUSERDATA);
   struct dev_monome *md = lua_touserdata(l, 1);
   int n = (int) luaL_checkinteger(l, 2) - 1; // convert from 1-base
@@ -1151,10 +1102,7 @@ int _arc_set_led(lua_State *l) {
  * @param z level (0-15)
  */
 int _grid_all_led(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(2);
   luaL_checktype(l, 1, LUA_TLIGHTUSERDATA);
   struct dev_monome *md = lua_touserdata(l, 1);
   int z = (int) luaL_checkinteger(l, 2); // don't convert value!
@@ -1173,10 +1121,7 @@ int _arc_all_led(lua_State *l) {
  * @param z (rotation 0-3 - or is it 0,90,180,270?)
  */
 int _grid_set_rotation(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(2);
   luaL_checktype(l, 1, LUA_TLIGHTUSERDATA);
   struct dev_monome *md = lua_touserdata(l, 1);
   int z = (int) luaL_checkinteger(l, 2); // don't convert value!
@@ -1191,10 +1136,7 @@ int _grid_set_rotation(lua_State *l) {
  * @param dev grid device
  */
 int _monome_refresh(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   luaL_checktype(l, 1, LUA_TLIGHTUSERDATA);
   struct dev_monome *md = lua_touserdata(l, 1);
   dev_monome_refresh(md);
@@ -1208,10 +1150,7 @@ int _monome_refresh(lua_State *l) {
  * @param dev grid device
  */
 int _grid_rows(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   luaL_checktype(l, 1, LUA_TLIGHTUSERDATA);
   struct dev_monome *md = lua_touserdata(l, 1);
   lua_pushinteger(l, dev_monome_grid_rows(md));
@@ -1224,10 +1163,7 @@ int _grid_rows(lua_State *l) {
  * @param dev grid device
  */
 int _grid_cols(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   luaL_checktype(l, 1, LUA_TLIGHTUSERDATA);
   struct dev_monome *md = lua_touserdata(l, 1);
   lua_pushinteger(l, dev_monome_grid_cols(md));
@@ -1236,10 +1172,7 @@ int _grid_cols(lua_State *l) {
 
 //-- audio processing controls
 int _load_engine(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   const char *s = luaL_checkstring(l, 1);
   o_load_engine(s);
   lua_settop(l, 0);
@@ -1247,10 +1180,7 @@ int _load_engine(lua_State *l) {
 }
 
 int _free_engine(lua_State *l) {
-  if (lua_gettop(l) != 0) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(0);
   o_free_engine();
   lua_settop(l, 0);
   return 0;
@@ -1325,7 +1255,6 @@ int _send_command(lua_State *l) {
 }
 
 int _request_engine_report(lua_State *l) {
-  (void)l;
   o_request_engine_report();
   return 0;
 }
@@ -1368,10 +1297,7 @@ int _metro_start(lua_State *l) {
  * @function metro_stop
  */
 int _metro_stop(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int idx = (int) luaL_checkinteger(l, 1) - 1;
   metro_stop(idx);
   lua_settop(l, 0);
@@ -1383,10 +1309,7 @@ int _metro_stop(lua_State *l) {
  * @function metro_set_time
  */
 int _metro_set_time(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(2);
   int idx = (int) luaL_checkinteger(l, 1) - 1;
   float sec = (float) luaL_checknumber(l, 2);
   metro_set_time(idx, sec);
@@ -1412,10 +1335,7 @@ int _get_time(lua_State *l) {
 
 // usleep 
 int _micro_sleep(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-     
+  lua_check_num_args(1);
   int usec = (float) luaL_checknumber(l, 1);
   usleep(usec);
   lua_settop(l, 0);
@@ -1438,10 +1358,7 @@ _call_grid_handler(int id, int x, int y, int state) {
 }
 
 int _clock_schedule_sleep(lua_State *l) {
-  if (lua_gettop(l) < 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(2);
   int coro_id = (int) luaL_checkinteger(l, 1);
   double seconds = luaL_checknumber(l, 2);
 
@@ -1455,10 +1372,7 @@ int _clock_schedule_sleep(lua_State *l) {
 }
 
 int _clock_schedule_sync(lua_State *l) {
-  if (lua_gettop(l) < 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(2);
   int coro_id = (int) luaL_checkinteger(l, 1);
   double beats = luaL_checknumber(l, 2);
 
@@ -1472,41 +1386,28 @@ int _clock_schedule_sync(lua_State *l) {
 }
 
 int _clock_cancel(lua_State *l) {
-  if (lua_gettop(l) < 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int coro_id = (int) luaL_checkinteger(l, 1);
   clock_cancel_coro(coro_id);
-
   return 0;
 }
 
 int _clock_internal_set_tempo(lua_State *l) {
-  if (lua_gettop(l) < 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   double bpm = luaL_checknumber(l, 1);
   clock_internal_set_tempo(bpm);
-
   return 0;
 }
 
 int _clock_set_source(lua_State *l) {
-  if (lua_gettop(l) < 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int source = (int) luaL_checkinteger(l, 1);
   clock_set_source(source);
-
   return 0;
 }
 
 int _clock_get_time_beats(lua_State *l) {
   lua_pushnumber(l, clock_gettime_beats());
-
   return 1;
 }
 
@@ -1595,6 +1496,32 @@ void w_handle_hid_event(int id, uint8_t type, dev_code_t code, int value) {
   lua_pushinteger(lvm, code);
   lua_pushinteger(lvm, value);
   l_report(lvm, l_docall(lvm, 4, 0));
+}
+
+void w_handle_crow_add(void *p) {
+  struct dev_crow *dev = (struct dev_crow *)p;
+  struct dev_common *base = (struct dev_common *)p;
+  int id = base->id;
+
+  _push_norns_func("crow", "add");
+  lua_pushinteger(lvm, id + 1); // convert to 1-base
+  lua_pushstring(lvm, base->name);
+  lua_pushlightuserdata(lvm, dev);
+  l_report(lvm, l_docall(lvm, 3, 0));
+}
+
+void w_handle_crow_remove(int id) {
+  _push_norns_func("crow", "remove");
+  lua_pushinteger(lvm, id + 1); // convert to 1-base
+  l_report(lvm, l_docall(lvm, 1, 0));
+}
+
+void w_handle_crow_event(void *dev, int id) {
+  struct dev_crow *d = (struct dev_crow *)dev;
+  _push_norns_func("crow", "event");
+  lua_pushinteger(lvm, id + 1); // convert to 1-base
+  lua_pushstring(lvm, d->line);
+  l_report(lvm, l_docall(lvm, 2, 0));
 }
 
 void w_handle_midi_add(void *p) {
@@ -1922,13 +1849,21 @@ void w_handle_poll_softcut_phase(int idx, float val) {
   l_report(lvm, l_docall(lvm, 2, 0));
 }
 
+// handle system command capture
+void w_handle_system_cmd(char *capture) {
+  lua_getglobal(lvm, "norns");
+  lua_getfield(lvm, -1, "system_cmd_capture");
+  lua_remove(lvm, -2);
+  lua_pushstring(lvm, capture);
+  l_report(lvm, l_docall(lvm, 1, 0));
+}
+
+
+
 
 // helper: set poll given by lua to given state
 static int poll_set_state(lua_State *l, bool val) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int idx = (int) luaL_checkinteger(l, 1) - 1; // convert from 1-based
   o_set_poll_state(idx, val);
   lua_settop(l, 0);
@@ -1944,10 +1879,7 @@ int _stop_poll(lua_State *l) {
 }
 
 int _set_poll_time(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(2);
   int idx = (int) luaL_checkinteger(l, 1) - 1; // convert from 1-based
   float val = (float) luaL_checknumber(l, 2);
   o_set_poll_time(idx, val);
@@ -1956,21 +1888,19 @@ int _set_poll_time(lua_State *l) {
 }
 
 int _request_poll_value(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   int idx = (int) luaL_checkinteger(l, 1) - 1; // convert from 1-based
   o_request_poll_value(idx);
   lua_settop(l, 0);
   return 0;
 }
 
+
+
+
 // audio context control
 int _set_level_adc(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_adc(val);
   lua_settop(l, 0);
@@ -1978,9 +1908,7 @@ int _set_level_adc(lua_State *l) {
 }
 
 int _set_level_dac(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_dac(val);
   lua_settop(l, 0);
@@ -1988,9 +1916,7 @@ int _set_level_dac(lua_State *l) {
 }
 
 int _set_level_ext(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_ext(val);
   lua_settop(l, 0);
@@ -1998,9 +1924,7 @@ int _set_level_ext(lua_State *l) {
 }
 
 int _set_level_monitor(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_monitor(val);
   lua_settop(l, 0);
@@ -2008,31 +1932,27 @@ int _set_level_monitor(lua_State *l) {
 }
 
 int _set_monitor_mix_mono(lua_State *l) {
-  (void)l;
   o_set_monitor_mix_mono();
   return 0;
 }
 
 int _set_monitor_mix_stereo(lua_State *l) {
-  (void)l;
   o_set_monitor_mix_stereo();
   return 0;
 }
 
 int _set_audio_pitch_on(lua_State *l) {
-  (void)l;
   o_set_audio_pitch_on();
   return 0;
 }
 
 int _set_audio_pitch_off(lua_State *l) {
-  (void)l;
   o_set_audio_pitch_off();
   return 0;
 }
 
 int _set_level_tape(lua_State *l) {
-  if (lua_gettop(l) != 1) { return luaL_error(l, "wrong number of arguments"); } 
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_tape(val);
   lua_settop(l, 0);
@@ -2040,7 +1960,7 @@ int _set_level_tape(lua_State *l) {
 }
 
 int _tape_rec_open(lua_State *l) {
-  if (lua_gettop(l) != 1) { return luaL_error(l, "wrong number of arguments"); }
+  lua_check_num_args(1);
   const char *s = luaL_checkstring(l, 1);
   o_tape_rec_open((char *) s);
   lua_settop(l, 0);
@@ -2048,19 +1968,17 @@ int _tape_rec_open(lua_State *l) {
 }
 
 int _tape_rec_start(lua_State *l) {
-  (void)l;
   o_tape_rec_start();
   return 0;
 }
 
 int _tape_rec_stop(lua_State *l) {
-  (void)l;
   o_tape_rec_stop();
   return 0;
 }
 
 int _tape_play_open(lua_State *l) {
-  if (lua_gettop(l) != 1) { return luaL_error(l, "wrong number of arguments"); }
+  lua_check_num_args(1);
   const char *s = luaL_checkstring(l, 1);
   o_tape_play_open((char *) s);
   lua_settop(l, 0);
@@ -2068,46 +1986,38 @@ int _tape_play_open(lua_State *l) {
 }
 
 int _tape_play_start(lua_State *l) {
-  (void)l;
   o_tape_play_start();
   return 0;
 }
 
 int _tape_play_stop(lua_State *l) {
-  (void)l;
   o_tape_play_stop();
   return 0;
 }
 
 int _poll_start_vu(lua_State *l) {
-  (void)l;
   o_poll_start_vu();
   return 0;
 }
 
 int _poll_stop_vu(lua_State *l) {
-  (void)l;
   o_poll_stop_vu();
   return 0;
 }
 
 int _poll_start_cut_phase(lua_State *l) {
-  (void)l;
   o_poll_start_cut_phase();
   return 0;
 }
 
 int _poll_stop_cut_phase(lua_State *l) {
-  (void)l;
   o_poll_stop_cut_phase();
   return 0;
 }
 
 
 int _cut_enable(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(2);
   int idx = (int) luaL_checkinteger(l, 1) - 1;
   float val = (float) luaL_checknumber(l, 2);
   o_cut_enable(idx, val);
@@ -2115,54 +2025,42 @@ int _cut_enable(lua_State *l) {
 }
 
 int _set_level_adc_cut(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_adc_cut(val);
   return 0;
 }
 
 int _set_level_ext_cut(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_ext_cut(val);
   return 0;
 }
 
 int _set_level_tape_cut(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_tape_cut(val);
   return 0;
 }
 
 int _set_level_cut_rev(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_cut_rev(val);
   return 0;
 }
 
 int _set_level_cut_master(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_cut_master(val);
   return 0;
 }
 
 int _set_level_cut(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(2);
   int idx = (int) luaL_checkinteger(l, 1) - 1;
   float val = (float) luaL_checknumber(l, 2);
   o_set_level_cut(idx, val);
@@ -2170,9 +2068,7 @@ int _set_level_cut(lua_State *l) {
 }
 
 int _set_level_cut_cut(lua_State *l) {
-  if (lua_gettop(l) != 3) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(3);
   int src = (int) luaL_checkinteger(l, 1) - 1;
   int dest = (int) luaL_checkinteger(l, 2) - 1;
   float val = (float) luaL_checknumber(l, 3);
@@ -2181,9 +2077,7 @@ int _set_level_cut_cut(lua_State *l) {
 }
 
 int _set_pan_cut(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(2);
   int idx = (int) luaL_checkinteger(l, 1) - 1;
   float val = (float) luaL_checknumber(l, 2);
   o_set_pan_cut(idx, val);
@@ -2191,24 +2085,19 @@ int _set_pan_cut(lua_State *l) {
 }
 
 int _cut_buffer_clear(lua_State *l) {
-  (void)l;
   o_cut_buffer_clear();
   return 0;
 }
 
 int _cut_buffer_clear_channel(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   int ch = (int) luaL_checkinteger(l, 1) - 1;
   o_cut_buffer_clear_channel(ch);
   return 0;
 }
 
 int _cut_buffer_clear_region(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(2);
   float start = (float) luaL_checknumber(l, 1);
   float end = (float) luaL_checknumber(l, 2);
   o_cut_buffer_clear_region(start, end);
@@ -2216,10 +2105,7 @@ int _cut_buffer_clear_region(lua_State *l) {
 }
 
 int _cut_buffer_clear_region_channel(lua_State *l) {
-  if (lua_gettop(l) != 3) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-  
+  lua_check_num_args(3);
   int ch = (int) luaL_checkinteger(l, 1) - 1;
   float start = (float) luaL_checknumber(l, 2);
   float end = (float) luaL_checknumber(l, 3);
@@ -2228,9 +2114,7 @@ int _cut_buffer_clear_region_channel(lua_State *l) {
 }
 
 int _cut_buffer_read_mono(lua_State *l) {
-  if (lua_gettop(l) != 6) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(6);
   const char *s = luaL_checkstring(l, 1);
   float start_src = (float) luaL_checknumber(l, 2);
   float start_dst = (float) luaL_checknumber(l, 3);
@@ -2242,9 +2126,7 @@ int _cut_buffer_read_mono(lua_State *l) {
 }
 
 int _cut_buffer_read_stereo(lua_State *l) {
-  if (lua_gettop(l) != 4) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(4);
   const char *s = luaL_checkstring(l, 1);
   float start_src = (float) luaL_checknumber(l, 2);
   float start_dst = (float) luaL_checknumber(l, 3);
@@ -2254,9 +2136,7 @@ int _cut_buffer_read_stereo(lua_State *l) {
 }
 
 int _cut_buffer_write_mono(lua_State *l) {
-  if (lua_gettop(l) != 4) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(4);
   const char *s = luaL_checkstring(l, 1);
   float start = (float) luaL_checknumber(l, 2);
   float dur = (float) luaL_checknumber(l, 3);
@@ -2266,9 +2146,7 @@ int _cut_buffer_write_mono(lua_State *l) {
 }
 
 int _cut_buffer_write_stereo(lua_State *l) {
-  if (lua_gettop(l) != 3) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(3);
   const char *s = luaL_checkstring(l, 1);
   float start = (float) luaL_checknumber(l, 2);
   float dur = (float) luaL_checknumber(l, 3);
@@ -2277,15 +2155,12 @@ int _cut_buffer_write_stereo(lua_State *l) {
 }
 
 int _cut_reset(lua_State *l) {
-  (void)l;
   o_cut_reset();
   return 0;
 }
 
 int _set_cut_param(lua_State *l) {
-  if (lua_gettop(l) != 3) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(3);
   const char *s = luaL_checkstring(l, 1);
   int voice = (int) luaL_checkinteger(l, 2) - 1;
   float val = (float) luaL_checknumber(l, 3);
@@ -2294,9 +2169,7 @@ int _set_cut_param(lua_State *l) {
 }
 
 int _set_cut_param_ii(lua_State *l) {
-  if (lua_gettop(l) != 3) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(3);
   const char *s = luaL_checkstring(l, 1);
   int voice = (int) luaL_checkinteger(l, 2) - 1;
   float val = (int) luaL_checkinteger(l, 3) - 1;
@@ -2305,9 +2178,7 @@ int _set_cut_param_ii(lua_State *l) {
 }
 
 int _set_cut_param_iif(lua_State *l) {
-  if (lua_gettop(l) != 4) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(4);
   const char *s = luaL_checkstring(l, 1);
   int a = (int) luaL_checkinteger(l, 2);
   int b = (int) luaL_checkinteger(l, 3);
@@ -2317,9 +2188,7 @@ int _set_cut_param_iif(lua_State *l) {
 }
 
 int _set_level_input_cut(lua_State *l) {
-  if (lua_gettop(l) != 3) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(3);
   int ch = (int) luaL_checkinteger(l, 1) - 1;
   int voice = (int) luaL_checkinteger(l, 2) - 1;
   float val = (float) luaL_checknumber(l, 3);
@@ -2332,57 +2201,45 @@ int _set_level_input_cut(lua_State *l) {
 
 // rev effects controls
 int _set_rev_on(lua_State *l) {
-  (void)l;
   o_set_rev_on();
   return 0;
 }
 
 int _set_rev_off(lua_State *l) {
-  (void)l;
   o_set_rev_off();
   return 0;
 }
 
 int _set_level_monitor_rev(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }  
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_monitor_rev(val);
   return 0;
 }
 
 int _set_level_ext_rev(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_ext_rev(val);
   return 0;
 }
 
 int _set_level_tape_rev(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_tape_rev(val);
   return 0;
 }
 
 int _set_level_rev_dac(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_level_rev_dac(val);
   return 0;
 }
 
 int _set_rev_param(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }  
+  lua_check_num_args(2);
   const char *s = luaL_checkstring(l, 1);
   float val = (float) luaL_checknumber(l, 2);
   o_set_rev_param(s, val);
@@ -2392,30 +2249,24 @@ int _set_rev_param(lua_State *l) {
 
 // comp effects controls
 int _set_comp_on(lua_State *l) {
-  (void)l;
   o_set_comp_on();
   return 0;
 }
 
 int _set_comp_off(lua_State *l) {
-  (void)l;
   o_set_comp_off();
   return 0;
 }
 
 int _set_comp_mix(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }  
+  lua_check_num_args(1);
   float val = (float) luaL_checknumber(l, 1);
   o_set_comp_mix(val);
   return 0;
 }
 
 int _set_comp_param(lua_State *l) {
-  if (lua_gettop(l) != 2) {
-    return luaL_error(l, "wrong number of arguments");
-  }
+  lua_check_num_args(2);
   const char *s = luaL_checkstring(l, 1);
     float val = (float) luaL_checknumber(l, 2);
   o_set_comp_param(s, val);
@@ -2423,23 +2274,18 @@ int _set_comp_param(lua_State *l) {
 }
 
 int _start_audio(lua_State *l) {
-  (void)l;  
   norns_hello_start();
   return 0;
 }
 
 int _restart_audio(lua_State *l) {
-  (void)l;
   o_restart_audio();
   norns_hello_start();
   return 0;
 }
 
 int _sound_file_inspect(lua_State *l) {
-  if (lua_gettop(l) != 1) {
-    return luaL_error(l, "wrong number of arguments");
-  }
-
+  lua_check_num_args(1);
   const char *path = luaL_checkstring(l, 1);
   struct snd_file_desc desc = snd_file_inspect(path);
   lua_pushinteger(l, desc.channels);
@@ -2448,3 +2294,12 @@ int _sound_file_inspect(lua_State *l) {
   return 3;
 }
 
+int _system_cmd(lua_State *l)
+{
+  lua_check_num_args(1);
+  const char *cmd = luaL_checkstring(l, 1);
+  system_cmd((char *)cmd);
+  return 0;
+}
+
+#pragma GCC diagnostic pop

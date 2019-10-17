@@ -43,6 +43,9 @@ Script.clear = function()
   -- clear init
   init = norns.none
 
+  -- clear crow functions
+  crow.init()
+
   -- clear last run
   norns.state.script = ''
   norns.state.name = 'none'
@@ -78,12 +81,11 @@ end
 --- load a script from the /scripts folder.
 -- @param filename (string) - file to load. leave blank to reload current file.
 Script.load = function(filename)
+  local name, path, relative
   if filename == nil then
     filename = norns.state.script
     name = norns.state.name
-    shortname = norns.state.name:match("([^/]+)$")
     path = norns.state.path
-    data = norns.state.data
   else
 	if string.sub(filename,1,1) == "/" then
 	  relative = string.sub(filename,string.len(_path["dust"]))

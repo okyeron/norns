@@ -14,6 +14,7 @@
 
 #include "Commands.h"
 #include "OscInterface.h"
+#include "Taper.h"
 
 using namespace crone;
 using softcut::FadeCurves;
@@ -58,12 +59,11 @@ void OscInterface::init(MixerClient *m, SoftCutClient *sc)
     vuPoll = std::make_unique<Poll>("vu");
     vuPoll->setCallback([](const char* path){
         auto vl = mixerClient->getVuLevels();
-        // FIXME: perform exponential scaling here?
         char l[4];
-        l[0] = (uint8_t)(64*vl->absPeakIn[0].load());
-        l[1] = (uint8_t)(64*vl->absPeakIn[1].load());
-        l[2] = (uint8_t)(64*vl->absPeakIn[2].load());
-        l[3] = (uint8_t)(64*vl->absPeakIn[3].load());
+        l[0] = (uint8_t)(64*AudioMeter::getPos(vl->absPeakIn[0].load()));
+        l[1] = (uint8_t)(64*AudioMeter::getPos(vl->absPeakIn[1].load()));
+        l[2] = (uint8_t)(64*AudioMeter::getPos(vl->absPeakIn[2].load()));
+        l[3] = (uint8_t)(64*AudioMeter::getPos(vl->absPeakIn[3].load()));
         lo_blob bl = lo_blob_new(sizeof(l), l);
         lo_send(matronAddress, path, "b", bl);
         vl->clear();
@@ -528,6 +528,16 @@ void OscInterface::addServerMethods() {
     addServerMethod("/set/param/cut/level_slew_time", "if", [](lo_arg **argv, int argc) {
         if (argc<2) { return; }
         Commands::softcutCommands.post(Commands::Id::SET_CUT_LEVEL_SLEW_TIME, argv[0]->i, argv[1]->f);
+    });
+
+    addServerMethod("/set/param/cut/pan_slew_time", "if", [](lo_arg **argv, int argc) {
+        if (argc<2) { return; }
+        Commands::softcutCommands.post(Commands::Id::SET_CUT_PAN_SLEW_TIME, argv[0]->i, argv[1]->f);
+    });
+
+    addServerMethod("/set/param/cut/recpre_slew_time", "if", [](lo_arg **argv, int argc) {
+        if (argc<2) { return; }
+        Commands::softcutCommands.post(Commands::Id::SET_CUT_RECPRE_SLEW_TIME, argv[0]->i, argv[1]->f);
     });
 
     addServerMethod("/set/param/cut/rate_slew_time", "if", [](lo_arg **argv, int argc) {
