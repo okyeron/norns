@@ -45,7 +45,6 @@ static struct watch w[DEV_TYPE_COUNT] = {
     {
         .sub_name = "tty",
         .node_pattern = "/dev/ttyUSB*"
-        //.node_pattern = "/dev/tty*"
     },
     {
         .sub_name = "input",
