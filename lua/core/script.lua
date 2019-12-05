@@ -35,7 +35,7 @@ Script.clear = function()
 
   -- clear engine
   engine.name = nil
-  free_engine()
+  _norns.free_engine()
 
   -- clear softcut
   softcut.reset()
@@ -57,7 +57,7 @@ Script.clear = function()
 
   -- reset PLAY mode screen settings
   local status = norns.menu.status()
-  if status == true then s_restore() end
+  if status == true then _norns.screen_restore() end
 
   screen.aa(0)
   screen.level(15)
@@ -65,7 +65,7 @@ Script.clear = function()
   screen.font_face(1)
   screen.font_size(8)
 
-  if status == true then s_save() end
+  if status == true then _norns.screen_save() end
 
   -- ensure finalizers run before next script
   collectgarbage()
@@ -75,7 +75,7 @@ Script.init = function()
   print("# script init")
   params.name = norns.state.shortname
   init()
-  s_save()
+  _norns.screen_save()
 end
 
 --- load a script from the /scripts folder.
@@ -109,25 +109,29 @@ Script.load = function(filename)
 
   print("# script load: " .. filename)
 
-  -- script local state
-  local state = { }
-
-  setmetatable(_G, {
-    __index = function (t,k)
-      return state[k]
-    end,
-    __newindex = function(t,k,v)
-      state[k] = v
-    end,
-  })
-
   local f=io.open(filename,"r")
   if f==nil then
     print("file not found: "..filename)
   else
     io.close(f)
-    if pcall(cleanup) then print("# cleanup")
-    else print("### cleanup failed") end
+    local ok, err
+    ok, err = pcall(cleanup)
+    if ok then print("# cleanup")
+    else
+      print("### cleanup failed with error: "..err)
+    end
+
+    -- script local state
+    local state = { }
+
+    setmetatable(_G, {
+      __index = function (t,k)
+        return state[k]
+      end,
+      __newindex = function(t,k,v)
+        state[k] = v
+      end,
+    })
 
     Script.clear() -- clear script variables and functions
 
