@@ -1,5 +1,6 @@
 --- Script class
--- @module script
+-- @classmod script
+-- @alias Script
 
 local Script = {}
 
@@ -17,6 +18,10 @@ Script.clear = function()
   -- redirect inputs to nowhere
   key = norns.none
   enc = norns.none
+
+  -- reset encoders
+  norns.enc.accel(0,true)
+  norns.enc.sens(0,1)
 
   -- clear, redirect, and reset devices
   grid.cleanup()
@@ -79,7 +84,7 @@ Script.init = function()
 end
 
 --- load a script from the /scripts folder.
--- @param filename (string) - file to load. leave blank to reload current file.
+-- @tparam string filename file to load. leave blank to reload current file.
 Script.load = function(filename)
   local name, path, relative
   if filename == nil then
@@ -171,8 +176,8 @@ Script.run = function()
 end
 
 --- load script metadata.
--- @param filename file to load
--- @return meta table with metadata
+-- @tparam string filename file to load
+-- @treturn table meta table with metadata
 Script.metadata = function(filename)
   local meta = {}
   local f=io.open(filename,"r")
