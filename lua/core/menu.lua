@@ -43,6 +43,7 @@ t.count = 1
 t.event = function(_)
   _menu.key(1,1)
   pending = false
+  if _menu.mode == true then _menu.redraw() end
 end
 -- metro for page status updates
 _menu.timer = metro[32]
@@ -90,8 +91,7 @@ norns.init_done = function(status)
     _menu.locked = false
     _menu.set_mode(false)
   end
-  m["PARAMS"].init_map()
-  m["PARAMS"].read_pmap()
+  m["PARAMS"].reset()
 end
 
 
@@ -213,7 +213,6 @@ m["PARAMS"] = require 'core/menu/params'
 m["SYSTEM"] = require 'core/menu/system'
 m["DEVICES"] = require 'core/menu/devices'
 m["WIFI"] = require 'core/menu/wifi'
-m["AUDIO"] = require 'core/menu/audio'
 m["RESET"] = require 'core/menu/reset'
 m["UPDATE"] = require 'core/menu/update'
 m["SLEEP"] = require 'core/menu/sleep'

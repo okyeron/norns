@@ -9,6 +9,18 @@ local Script = {}
 Script.clear = function()
   print("# script clear")
 
+  -- script local state
+  local state = { }
+
+  setmetatable(_G, {
+    __index = function (_,k)
+      return state[k]
+    end,
+    __newindex = function(_,k,v)
+      state[k] = v
+    end,
+  })
+
   -- reset cleanup script
   cleanup = norns.none
 
@@ -40,7 +52,6 @@ Script.clear = function()
 
   -- clear engine
   engine.name = nil
-  _norns.free_engine()
 
   -- clear softcut
   softcut.reset()
@@ -59,6 +70,9 @@ Script.clear = function()
 
   -- clear params
   params:clear()
+  norns.pmap.clear()
+  -- add audio
+  audio.add_params()
 
   -- reset PLAY mode screen settings
   local status = norns.menu.status()
@@ -125,18 +139,12 @@ Script.load = function(filename)
     else
       print("### cleanup failed with error: "..err)
     end
-
-    -- script local state
-    local state = { }
-
-    setmetatable(_G, {
-      __index = function (t,k)
-        return state[k]
-      end,
-      __newindex = function(t,k,v)
-        state[k] = v
-      end,
-    })
+    
+    -- unload asl package entry so `require 'asl'` works
+    -- todo(pq): why is this not needed generally (e.g., for 'ui', 'util', etc.)?
+    if package.loaded['asl'] ~= nil then
+      package.loaded['asl'] = nil
+    end 
 
     Script.clear() -- clear script variables and functions
 
@@ -173,6 +181,7 @@ Script.run = function()
   else
     engine.load("None", Script.init)
   end
+  norns.pmap.read() -- load parameter map
 end
 
 --- load script metadata.

@@ -13,6 +13,9 @@
 .waf*
 build/
 
+# build
+maiden/maiden
+
 # xcode
 *.xcbkptlist
 *.xcuserstate
@@ -30,3 +33,6 @@ crone/build-release/
 
 # Jekyll
 _site
+
+# maiden-repl bin
+maiden-repl/maiden-repl

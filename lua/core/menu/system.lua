@@ -1,12 +1,11 @@
 local m = {
   pos = 1,
-  list = {"AUDIO > ", "DEVICES > ", "WIFI >", "RESET", "UPDATE"},
-  pages = {"AUDIO", "DEVICES", "WIFI", "RESET", "UPDATE"}
+  list = {"DEVICES > ", "WIFI >", "RESET", "UPDATE"},
+  pages = {"DEVICES", "WIFI", "RESET", "UPDATE"}
 }
 
 m.key = function(n,z)
   if n==2 and z==1 then
-    norns.state.save()
     _menu.set_page("HOME")
   elseif n==3 and z==1 then
     _menu.set_page(m.pages[m.pos])

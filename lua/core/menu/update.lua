@@ -104,9 +104,7 @@ m.key = function(n,z)
       m.stage="update"
       _menu.redraw()
     elseif n==3 and z==1 then
-      os.execute("sudo systemctl restart norns-jack.service")
-      os.execute("sudo systemctl restart norns-sclang.service")
-      os.execute("sudo systemctl restart norns-matron.service")
+      _norns.reset()
     end
   elseif m.stage=="done" and z==1 then
     print("shutting down.")
@@ -139,6 +137,8 @@ m.redraw = function()
 end
 
 m.init = function()
+  if _menu.alt == true then norns.version.update = 0 end
+
   m.stage = "init"
   m.message = "checking for update..."
   _menu.redraw()
