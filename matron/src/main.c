@@ -26,6 +26,7 @@
 #include "clock.h"
 #include "clocks/clock_internal.h"
 #include "clocks/clock_midi.h"
+#include "clocks/clock_link.h"
 
 #include "oracle.h"
 #include "weaver.h"
@@ -71,6 +72,10 @@ int main(int argc, char **argv) {
     clock_init();
     clock_internal_start();
     clock_midi_init();
+#if HAVE_ABLETON_LINK
+    clock_link_start();
+#endif
+
     watch_init();
 
     o_init(); // oracle (audio)

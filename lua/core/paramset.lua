@@ -43,6 +43,10 @@ function ParamSet.new(id, name)
 end
 
 --- add separator.
+-- name is optional.
+-- separators have their own parameter index and
+-- can be hidden or added to a paremeter group.
+-- @tparam string name
 function ParamSet:add_separator(name)
   local param = separator.new(name)
   table.insert(self.params, param)
@@ -51,7 +55,11 @@ function ParamSet:add_separator(name)
   self.hidden[self.count] = false
 end
 
---- add group.
+--- add parameter group.
+-- groups cannot be nested,
+-- i.e. a group cannot be made within a group.
+-- @tparam string name
+-- @tparam int n
 function ParamSet:add_group(name,n)
   if self.group < 1 then
     local param = group.new(name,n)
@@ -59,6 +67,7 @@ function ParamSet:add_group(name,n)
     self.count = self.count + 1
     self.group = n
     self.hidden[self.count] = false
+    self.lookup[name] = self.count
   else
     print("ERROR: paramset cannot nest GROUPs")
   end
@@ -102,6 +111,8 @@ function ParamSet:add(args)
       return nil
     end
   end
+
+  param.save = true
 
   table.insert(self.params, param)
   self.count = self.count + 1
@@ -251,6 +262,14 @@ function ParamSet:set_action(index, func)
   param.action = func
 end
 
+--- set save state.
+-- @param index
+-- @param state set the save state for this index
+function ParamSet:set_save(index, state)
+  local param = self:lookup_param(index)
+  param.save = state
+end
+
 --- get type.
 -- @param index
 function ParamSet:t(index)
@@ -269,19 +288,22 @@ end
 --- set visibility to hidden.
 -- @param index
 function ParamSet:hide(index)
+  if type(index)=="string" then index = self.lookup[index] end
   self.hidden[index] = true
 end
 
 --- set visiblility to show.
 -- @param index
 function ParamSet:show(index)
+  if type(index)=="string" then index = self.lookup[index] end
   self.hidden[index] = false
 end
 
 --- get visibility.
+-- parameters are visible by default.
 -- @param index
 function ParamSet:visible(index)
-  return self.hidden[index]
+  return not self.hidden[index]
 end
 
 
@@ -305,6 +327,7 @@ end
 
 --- write to disk.
 -- @param filename either an absolute path, a number (to write [scriptname]-[number].pset to local data folder) or nil (to write default [scriptname].pset to local data folder)
+-- @tparam string name
 function ParamSet:write(filename, name)
   filename = filename or 1
   if type(filename) == "number" then
@@ -318,7 +341,7 @@ function ParamSet:write(filename, name)
     io.output(fd)
     if name then io.write("-- "..name.."\n") end
     for _,param in pairs(self.params) do
-      if param.id and param.t ~= self.tTRIGGER then
+      if param.id and param.save and param.t ~= self.tTRIGGER then
         io.write(string.format("%s: %s\n", quote(param.id), param:get()))
       end
     end
