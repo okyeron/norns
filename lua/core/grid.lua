@@ -83,6 +83,7 @@ function Grid.remove(dev) end
 -- @tparam integer val : rotation 0,90,180,270 as [0, 3]
 function Grid:rotation(val)
   _norns.grid_set_rotation(self.dev, val)
+  Grid.update_devices()
 end
 
 
@@ -160,12 +161,11 @@ function Grid.update_devices()
     Grid.vports[i].device = nil
     Grid.vports[i].rows = 0
     Grid.vports[i].cols = 0       
-
     for _,device in pairs(Grid.devices) do
       if device.name == Grid.vports[i].name then
         Grid.vports[i].device = device
-        Grid.vports[i].rows = device.rows
-        Grid.vports[i].cols = device.cols
+        Grid.vports[i].rows = _norns.grid_rows(device.dev) --device.rows
+        Grid.vports[i].cols = _norns.grid_cols(device.dev) --device.cols
         device.port = i
       end
     end
